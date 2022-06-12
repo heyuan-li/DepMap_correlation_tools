@@ -1,0 +1,181 @@
+---
+title: "HL_220606_DepMap_example"
+author: Heyuan Li
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output: 
+  html_document: default
+  pdf_document: default
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(echo = TRUE)
+knitr::opts_knit$set(cache = TRUE)
+knitr::opts_knit$set(tidy.opts = list(width.cutoff = 60), tidy = TRUE)
+knitr::opts_knit$set(root.dir = '/Users/heyuan/Documents/GitHub/DepMap_correlation_tools')
+
+source("/Users/heyuan/Documents/GitHub/DepMap_correlation_tools/code/functions.R")
+load("/Users/heyuan/Documents/GitHub/DepMap_correlation_tools/data/global.RData")
+
+oncogene_of_interest = c('MYC','MYCN','MTOR','SRC','ALK','BCL2','CDK4','CDK6','CCND1','JUN','PIK3CA','AKT1','ABL1','BRAF','PDGFRA','PDGFRB','FGFR1','EGFR','RAF1','MET','RAC1','MAPK1','KRAS','HRAS','AR','ERBB2','JAK2')
+
+theme_set(
+  theme_bw()
+)
+```
+
+
+*********************
+All the data are organized as cell line in rows, genes/pathways in columns. Here I used CRISPR screen dependency scores for most of the analysis for illustration. It can be swapped to other data tables:
+
+### Cell line & genes
+ccle_cn: copy number variations in CCLE
+ccle_rnaseq: RNA expression in CCLE
+ccle_protein: Protein expression in CCLE
+drive_rsa: RSA score in project DRIVE (Robert et al, Cell, 2017)
+shrna_d2: DEMETER2 score in combined shRNA screens
+
+### Cell line & pathways
+gsva: gsva score calculated from ccle_rnaseq
+
+
+### data sources
+
+drive_rsa is a replicate analysis from the original paper (Robert et al, Cell, 2017)
+gsva is calculated from gsva() from GSVA package from Bioconductor
+
+The rest of these data are downloaded from DepMap.org (22Q1) and are pre-processed by data_formmating.R
+
+**********************
+
+
+1. Tissue selective dependency heatmap
+
+Given genes of interest (here using a list of oncogenes as examples), plot the fraction of cell lines that have dependency score less than the cutoff
+*Can also plot tissue specific expression
+
+```{r dep_heatmap, fig.align='center', fig.height=7, fig.width=7}
+
+tissue_dep(genelist = oncogene_of_interest, data = crispr_chronos, dep_cutoff = -0.6)
+
+```
+Binary version of the previous plot, using an addition cutoff for fraction.
+Given genes of interest (here using a list of oncogenes as examples), plot the tissues that shows dependencies.
+
+```{r dep_heatmap_binary, fig.align='center', fig.height=7, fig.width=7}
+
+tissue_dep_binary(genelist = oncogene_of_interest, data = crispr_chronos, dep_cutoff = -0.6, perc_cutoff = 0.5)
+
+```
+
+
+
+2. Co-dependency/Correlation analysis
+
+2.1 What genes are most co-dependent with c-MYC? 
+
+```{r table1}
+
+cortable1 = single_cor(gene = "MYC", data1 = crispr_chronos, data2 = crispr_chronos, method = "pearson")
+cortable1[order(cortable1[,"pval"], decreasing = F),][1:10,]
+
+```
+What genes are most correlated with c-MYC copy number? 
+
+```{r table1v}
+
+cortable1 = single_cor(gene = "MYC", data1 = ccle_cn, data2 = crispr_chronos, method = "pearson")
+cortable1[order(cortable1[,"pval"], decreasing = F),][1:10,]
+
+```
+
+
+
+2.2 What genes are co-dependent with c-MYC with tissue selectivity?
+
+```{r table2.1, fig.align='center', fig.height=10, fig.width=13}
+
+# calculate correlations within each tissue type
+cortable2 = single_cor(gene = "MYC", data1 = crispr_chronos, data2 = crispr_chronos, method = "pearson", split_tissue = T)
+
+# show top correlated genes in breast cancer
+subcor = subset(cortable2, tissue_type == "Breast Cancer")
+subcor[order(subcor[,"pval"], decreasing = F),][1:10,]
+
+```
+
+What tissue types are most correlated between MYC and MYCN?
+
+```{r table2.2, fig.align='center', fig.height=10, fig.width=13}
+
+subcor = subset(cortable2, gene == "MYCN")
+subcor[order(subcor[,"pval"], decreasing = F),][1:10,]
+
+
+```
+
+
+3. Visualizations of individual data or summarized data
+
+3.1 Scatter plot pan cancer correlations (MYC dependency vs. BRD4 dependency)
+
+```{r scatter1, fig.align='center', fig.height=4, fig.width=4}
+
+single_cor_plot("MYC", "BRD4", crispr_chronos, crispr_chronos, split_tissue = F)
+
+```
+
+3.2 Scatter plot split by tissue type (MYC dependency vs. BRD4 dependency)
+
+```{r scatter_tissue, fig.align='center', fig.height=10, fig.width=10}
+
+single_cor_plot("MYC", "BRD4", crispr_chronos, crispr_chronos, split_tissue = T)
+
+```
+
+3.3 box plot (MYC dependency vs. BRD4 dependency)
+
+```{r boxplot1, fig.align='center', fig.height=4, fig.width=2.5}
+
+single_box("MYC", "BRD4", crispr_chronos, crispr_chronos, cutoff = 0.33, abs = F)
+
+```
+
+3.3 box plot (MYC copy number vs. BRD4 dependency)
+
+```{r boxplot1v, fig.align='center', fig.height=4, fig.width=2.5}
+
+single_box("MYC", "BRD4", ccle_cn, crispr_chronos, cutoff = 0.33, abs = F)
+
+```
+
+4. What are the genes most correlated with my group of oncogenes?
+
+```{r table3}
+
+cortable3 = group_cor(genelist = oncogene_of_interest, data1 = crispr_chronos, data2 = crispr_chronos, method = "pearson")
+data.frame(cortable3[order(rowMeans(cortable3), decreasing = T),][1:10,])
+
+```
+
+5. what are the most correlated genes within my group of oncogenes?
+* Here you can see nice correlation between BRAF and MAPK1, as well as CDK4 and CCND1
+
+```{r cor_heatmap, fig.align='center', fig.height=5, fig.width=6}
+
+pheatmap(cortable3[oncogene_of_interest,])
+
+```
+6. what are the pathways that correlate with MYC dependency?
+Given a gene of interest in a dataset, correlate it with gene expression signatures (MSigDb) from CCLE RNAseq data.
+
+```{r gsva_cor, fig.align='center', fig.height=5, fig.width=8}
+
+gsva_cor("MYC", crispr_chronos, subset = "REACTOME", n = 15)
+
+```
+
+```{r session_info}
+sessionInfo()
+```
+
